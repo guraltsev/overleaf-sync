@@ -30,6 +30,51 @@ moritz@github:~/test$ pip3 install overleaf-sync
 
 That's it! Depending on your local Python installation, you might need to use `pip` instead of `pip3`.
 
+### Run from a checkout (no package installation)
+You can run this repository directly without installing `overleaf-sync`. Clone or
+download the repository, then install its runtime dependencies from the
+repository root:
+
+```
+python -m pip install -r requirements.txt
+```
+
+Python 3.10 through 3.14 is supported. The requirements select PySide6 6.11.1,
+which supports current CPython releases; do not pin it to the obsolete 6.5.0
+release. If `python -m pip` reports that pip is unavailable, install Python
+from python.org with the **pip** option enabled, then create and activate a
+virtual environment before rerunning the command.
+
+The first command installs only the dependencies; it does not install this
+project. This checkout keeps its source in the `olsync` subdirectory, so add
+that directory to `PYTHONPATH` before using `python -m`. From the repository
+root, in PowerShell:
+
+```
+$env:PYTHONPATH = "$(Get-Location)\olsync;$env:PYTHONPATH"
+python -m olsync.olsync login
+python -m olsync.olsync
+```
+
+On macOS or Linux, use:
+
+```
+PYTHONPATH="$PWD/olsync${PYTHONPATH:+:$PYTHONPATH}" python -m olsync.olsync login
+PYTHONPATH="$PWD/olsync${PYTHONPATH:+:$PYTHONPATH}" python -m olsync.olsync
+```
+
+All normal `ols` arguments work after the module name, for example
+`python -m olsync.olsync list` or `python -m olsync.olsync --path path/to/project`.
+
+On Windows, [`ols.cmd`](ols.cmd) is a shortcut for the same command. It sets
+`PYTHONPATH` relative to the script's own location, so it can be called from
+any working directory (including the folder you want to sync):
+
+```
+C:\path\to\overleaf-sync\ols.cmd login
+C:\path\to\overleaf-sync\ols.cmd
+```
+
 ### Prerequisites
 - Create your project on [Overleaf](https://www.overleaf.com/project), for example a project named `test`. Overleaf-sync is not able to create projects (yet).
 - Create a folder, preferably with the same name as the project (`test`) on your computer.
@@ -110,4 +155,3 @@ THE AUTHOR OF THIS SOFTWARE AND THIS SOFTWARE IS NOT ENDORSED BY, DIRECTLY AFFIL
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 THIS SOFTWARE WAS DESIGNED TO BE USED ONLY FOR RESEARCH PURPOSES. THIS SOFTWARE COMES WITH NO WARRANTIES OF ANY KIND WHATSOEVER. USE IT AT YOUR OWN RISK! IF THESE TERMS ARE NOT ACCEPTABLE, YOU AREN'T ALLOWED TO USE THE CODE.
-

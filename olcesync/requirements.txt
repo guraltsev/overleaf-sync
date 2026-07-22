@@ -4,4 +4,5 @@ yaspin==2.*
 python-dateutil~=2.8.1
 click==8.*
 socketIO-client==0.5.7.4
-PySide6==6.*
+# PySide6 6.5 and earlier cannot be installed on current Python releases.
+PySide6>=6.11.1,<6.12
