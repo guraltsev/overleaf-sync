@@ -68,9 +68,13 @@ class OverleafClient(object):
         self._cookie_path = str(Path(cookie_path).resolve()) if cookie_path else None
         self._session = reqs.Session()
         self._session.headers.update({"User-Agent": "Mozilla/5.0"})
-        for name, value in (cookie or {}).items():
-            self._session.cookies.set(name,
-                                      value,
+        # GCLB is a short-lived Google load-balancer affinity cookie. Reusing
+        # a captured value can pin a fresh session to an invalid backend;
+        # Overleaf authentication itself is carried by overleaf_session2.
+        session_cookie = (cookie or {}).get("overleaf_session2")
+        if session_cookie:
+            self._session.cookies.set("overleaf_session2",
+                                      session_cookie,
                                       domain=".overleaf.com",
                                       path="/")
 
@@ -128,6 +132,8 @@ class OverleafClient(object):
         self._debug_log("project_dashboard_request",
                         cookie_file=self._cookie_path,
                         cookie_names=sorted((self._cookie or {}).keys()),
+                        sent_cookie_names=sorted(
+                            cookie.name for cookie in self._session.cookies),
                         requested_url=PROJECT_URL)
         try:
             projects_page = self._session.get(PROJECT_URL)
