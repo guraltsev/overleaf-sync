@@ -17,7 +17,6 @@ requires = [
     "yaspin == 2.*",
     "python-dateutil~=2.8.1",
     "click == 8.*",
-    "socketIO-client == 0.5.7.2",
     "PySide6 >= 6.11.1, < 6.12"
 ]
 keywords = "overleaf sync latex tex"

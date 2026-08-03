@@ -17,7 +17,6 @@ from pathlib import Path
 
 import requests as reqs
 from bs4 import BeautifulSoup
-from socketIO_client import SocketIO
 
 # Where to get the CSRF Token and where to send the login request to
 LOGIN_URL = "https://www.overleaf.com/login"
@@ -258,48 +257,86 @@ class OverleafClient(object):
         Returns: project details
         """
 
-        project_infos = None
-
-        # Callback function for the joinProject emitter
-        def set_project_infos(project_infos_dict):
-            # Set project_infos variable in outer scope
-            nonlocal project_infos
-            project_infos = project_infos_dict.get("project", {})
-
-        # The session cookie authenticates the Socket.IO connection.  GCLB is
-        # only an optional, short-lived load-balancer affinity cookie: current
-        # Overleaf logins commonly do not provide it.  Reuse any cookies the
-        # dashboard request has received, rather than requiring GCLB to have
-        # been persisted at login time.
+        # Overleaf Cloud still serves Socket.IO 0.9 for the editor.  The
+        # third-party Python socketIO-client package has changed protocols
+        # across releases, so use the small, documented-by-the-server polling
+        # exchange directly. This avoids both stale GCLB affinity cookies and
+        # failed WebSocket upgrades behind proxies.
         if not self._session.cookies.get("overleaf_session2"):
             raise RuntimeError(
                 "Overleaf session cookie is missing. Please log in again.")
-        cookie = "; ".join(
-            "{}={}".format(stored_cookie.name, stored_cookie.value)
-            for stored_cookie in self._session.cookies)
 
-        # Connect to Overleaf Socket.IO, send a time parameter and the cookies
-        socket_io = SocketIO(BASE_URL,
-                             params={
-                                 't': int(time.time()),
-                                 'projectId': project_id
-                             },
-                             headers={'Cookie': cookie})
+        socket_url = BASE_URL + "/socket.io/1/"
+        handshake = self._session.get(
+            socket_url,
+            params={'t': int(time.time() * 1000), 'projectId': project_id},
+            timeout=15)
+        handshake.raise_for_status()
+        session_id = handshake.text.split(':', 1)[0]
+        if not session_id:
+            raise RuntimeError("Overleaf returned an invalid Socket.IO handshake.")
 
-        # Wait until we connect to the socket
-        socket_io.on('connect', lambda: None)
-        socket_io.wait_for_callbacks()
+        polling_url = socket_url + "xhr-polling/" + session_id
+        deadline = time.monotonic() + 15
+        try:
+            while time.monotonic() < deadline:
+                response = self._session.get(
+                    polling_url,
+                    params={'t': int(time.time() * 1000)},
+                    timeout=max(1, deadline - time.monotonic()))
+                response.raise_for_status()
+                for packet in self._socketio_packets(response.content):
+                    if not packet.startswith("5:::"):
+                        continue
+                    event = json.loads(packet[4:])
+                    if event.get("name") != "joinProjectResponse":
+                        continue
+                    args = event.get("args", [])
+                    if args and isinstance(args[0], dict):
+                        project = args[0].get("project")
+                        if isinstance(project, dict):
+                            return project
+        finally:
+            # Tell the server this short-lived polling connection is done.
+            try:
+                self._session.post(
+                    polling_url,
+                    params={'t': int(time.time() * 1000)},
+                    data="0::",
+                    headers={'Content-Type': 'text/plain'},
+                    timeout=5)
+            except reqs.RequestException:
+                pass
 
-        # Send the joinProject event and receive the project infos
-        socket_io.on('joinProjectResponse', set_project_infos)
-        while project_infos is None:
-            socket_io.wait(1)
+        raise RuntimeError(
+            "Timed out while retrieving the Overleaf project file tree.")
 
-        # Disconnect from the socket if still connected
-        if socket_io.connected:
-            socket_io.disconnect()
-
-        return project_infos
+    @staticmethod
+    def _socketio_packets(payload):
+        """Decode Socket.IO 0.9 polling frames into text packets."""
+        delimiter = b"\xef\xbf\xbd"
+        packets = []
+        position = 0
+        while position < len(payload):
+            if not payload.startswith(delimiter, position):
+                packets.append(payload[position:].decode("utf-8"))
+                break
+            position += len(delimiter)
+            length_end = payload.find(delimiter, position)
+            if length_end < 0:
+                raise RuntimeError("Overleaf returned a malformed Socket.IO frame.")
+            try:
+                length = int(payload[position:length_end])
+            except ValueError as exc:
+                raise RuntimeError(
+                    "Overleaf returned a malformed Socket.IO frame length.") from exc
+            position = length_end + len(delimiter)
+            packet = payload[position:position + length]
+            if len(packet) != length:
+                raise RuntimeError("Overleaf returned a truncated Socket.IO frame.")
+            packets.append(packet.decode("utf-8"))
+            position += length
+        return packets
 
     def upload_file(self, project_id, project_infos, file_name, file_size, file):
         """
