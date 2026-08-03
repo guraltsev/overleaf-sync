@@ -11,6 +11,10 @@ Remember to click "accept all cookies" when logging in.
 
 This tool provides an easy way to synchronize Overleaf projects from and to your local computer. No paid account necessary.
 
+## Maintenance
+
+This repository is a fork of [moritzgloeckl/overleaf-sync](https://github.com/moritzgloeckl/overleaf-sync). It is actively maintained with LLM assistance; changes remain reviewed and tested by the maintainers.
+
 ----
 
 ## Features
