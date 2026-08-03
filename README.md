@@ -84,13 +84,13 @@ C:\path\to\overleaf-sync\ols.cmd
 ### Usage
 #### Login
 ```
-moritz@github:~/test$ ols login [--path]
+moritz@github:~/test$ ols login [--store-path]
 Login successful. Cookie persisted as `.olauth`. You may now sync your project.
 ```
 
 Logging in will be handled by a mini web browser opening on your device (using Qt5). You can then enter your username and password securely on the official Overleaf website. You might get asked to solve a CAPTCHA in the process. Your credentials are sent to Overleaf over HTTPS.
 
-It then stores your *cookie* (**not** your login credentials) in a hidden file called `.olauth` in the same folder you run the command from. It is possible to store the cookie elsewhere using the `--path` option. The cookie file will not be synced to or from Overleaf.
+It then stores your *cookie* (**not** your login credentials) in a hidden file called `.olauth` in the same folder you run the command from. It is possible to store the cookie elsewhere using the `--store-path` option. The cookie file will not be synced to or from Overleaf.
 
 Keep the `.olauth` file save, as it can be used to log in into your account.
 

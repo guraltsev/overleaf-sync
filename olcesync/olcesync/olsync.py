@@ -180,7 +180,7 @@ def main(ctx, local, remote, project_name, cookie_path, sync_path, olignore_path
 
 @main.command()
 @click.option('-s', '--server_ip', help="Server IP.")
-@click.option('--path',
+@click.option('--store-path',
               'cookie_path',
               default=".olauth",
               type=click.Path(exists=False),
