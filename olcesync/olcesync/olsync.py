@@ -15,6 +15,7 @@ import io
 import json
 import os
 import pickle
+import sys
 import traceback
 import zipfile
 from pathlib import Path
@@ -31,6 +32,38 @@ except ImportError:
     # Import for development
     import olbrowserlogin  # type:ignore
     from olclient import OverleafClient  # type:ignore
+
+
+class _DebugStreamTee:
+    """Mirror a stream to the console and the debug output file."""
+
+    def __init__(self, console, log_file):
+        self._console = console
+        self._log_file = log_file
+
+    def write(self, text):
+        self._console.write(text)
+        self._log_file.write(text)
+
+    def flush(self):
+        self._console.flush()
+        self._log_file.flush()
+
+    def isatty(self):
+        return self._console.isatty()
+
+    def __getattr__(self, name):
+        return getattr(self._console, name)
+
+
+def enable_debug_output_capture(debug_dir):
+    """Write all process stdout and stderr to a persistent debug log."""
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    log_file = (debug_dir / "debug-output.log").open("a", encoding="utf-8")
+    log_file.write("\n===== overleaf-sync debug session =====\n")
+    log_file.flush()
+    sys.stdout = _DebugStreamTee(sys.stdout, log_file)
+    sys.stderr = _DebugStreamTee(sys.stderr, log_file)
 
 
 @click.group(invoke_without_command=True)
@@ -87,6 +120,12 @@ except ImportError:
 def main(ctx, local, remote, project_name, cookie_path, sync_path, olignore_path,
          verbose, debug):
     if ctx.invoked_subcommand is None:
+        debug_dir = Path(sync_path).resolve() / ".olsync-debug"
+        if debug:
+            enable_debug_output_capture(debug_dir)
+            # execute_action normally suppresses tracebacks unless --verbose;
+            # a debug run must preserve them in debug-output.log.
+            verbose = True
         for i in range(5):
             if not os.path.isfile(cookie_path):
                 os.chdir('..')
@@ -102,7 +141,7 @@ def main(ctx, local, remote, project_name, cookie_path, sync_path, olignore_path
         server_ip = get_key("server")
         overleaf_client = OverleafClient(
             server_ip, store["cookie"], store["csrf"],
-            ".olsync-debug" if debug else None,
+            debug_dir if debug else None,
             cookie_path if debug else None)
 
         # Change the current directory to the specified sync path
