@@ -116,3 +116,5 @@ venv.bak/
 test*
 .olauth
 .olignore
+/debug/*
+!/debug/.gitkeep
