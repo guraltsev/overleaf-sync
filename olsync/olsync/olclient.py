@@ -11,6 +11,7 @@
 
 import json
 import time
+from pathlib import Path
 
 import requests as reqs
 from bs4 import BeautifulSoup
@@ -58,25 +59,73 @@ class OverleafClient(object):
                 if all(p.get(k) == v for k, v in more_attrs.items()):
                     yield p
 
-    def __init__(self, cookie=None, csrf=None):
+    def __init__(self, cookie=None, csrf=None, debug_dir=None):
         self._cookie = cookie
         self._csrf = csrf
+        self._debug_dir = Path(debug_dir) if debug_dir else None
+
+    def _write_debug_snapshot(self, response):
+        """Persist the dashboard response without exposing authentication data."""
+        if self._debug_dir is None:
+            return
+
+        self._debug_dir.mkdir(parents=True, exist_ok=True)
+        html_path = self._debug_dir / "project-dashboard.html"
+        metadata_path = self._debug_dir / "project-dashboard.json"
+        html_path.write_bytes(response.content)
+        metadata_path.write_text(
+            json.dumps({
+                "url": response.url,
+                "status_code": response.status_code,
+                "content_type": response.headers.get("Content-Type"),
+                "content_length": len(response.content),
+            }, indent=2),
+            encoding="utf-8")
+        print("Debug dashboard snapshot written to {}".format(html_path))
+
+    def _projects_payload(self):
+        """Fetch and parse the dashboard project payload.
+
+        The dashboard is an undocumented Overleaf interface, so retain the
+        received HTML in debug mode before parsing it. This makes redirects,
+        CAPTCHA pages, and markup changes directly inspectable.
+        """
+        projects_page = reqs.get(PROJECT_URL, cookies=self._cookie)
+        self._write_debug_snapshot(projects_page)
+        projects_page.raise_for_status()
+
+        page = BeautifulSoup(projects_page.content, 'html.parser')
+        project_blob = page.find('meta', {'name': 'ol-prefetchedProjectsBlob'})
+        if project_blob is None or not project_blob.get('content'):
+            title = page.title.get_text(strip=True) if page.title else "(no title)"
+            raise RuntimeError(
+                "Overleaf returned a dashboard page without the project list "
+                "(HTTP {}, title: {}).{}".format(
+                    projects_page.status_code, title,
+                    " Inspect {}.".format(
+                        self._debug_dir / "project-dashboard.html")
+                    if self._debug_dir else " Re-run with --debug to save it."))
+
+        try:
+            payload = json.loads(project_blob['content'])
+        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                "Overleaf returned an unreadable project list.{}".format(
+                    " Inspect {}.".format(
+                        self._debug_dir / "project-dashboard.html")
+                    if self._debug_dir else " Re-run with --debug to save it.")) from exc
+
+        if not isinstance(payload, dict) or not isinstance(payload.get('projects'), list):
+            raise RuntimeError("Overleaf returned a project list in an unexpected format.")
+        return payload
 
     def all_projects(self):
         """
         Get all of a user's active projects (= not archived and not trashed)
         Returns: List of project objects
         """
-        projects_page = reqs.get(PROJECT_URL, cookies=self._cookie)
-
-        json_content = json.loads(
-            BeautifulSoup(
-                projects_page.content,    # type: ignore
-                'html.parser').find('meta', {
-                    'name': 'ol-prefetchedProjectsBlob'
-                }).get('content'))    # type: ignore
-
-        return list(OverleafClient.filter_projects(json_content['projects']))
+        return list(OverleafClient.filter_projects(
+            self._projects_payload()['projects']))
 
     def get_project(self, project_name):
         """
@@ -85,14 +134,8 @@ class OverleafClient(object):
         Returns: project object
         """
 
-        projects_page = reqs.get(PROJECT_URL, cookies=self._cookie)
-        json_content = json.loads(
-            BeautifulSoup(projects_page.content,
-                          'html.parser').find('meta', {
-                              'name': 'ol-prefetchedProjectsBlob'
-                          }).get('content'))
         return next(
-            OverleafClient.filter_projects(json_content['projects'],
+            OverleafClient.filter_projects(self._projects_payload()['projects'],
                                            {"name": project_name}), None)
 
     def download_project(self, project_id):

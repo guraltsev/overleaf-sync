@@ -121,6 +121,10 @@ Just calling `ols` will two-way sync your project. When there are changes both l
 
 The option `--store-path` specifies the path of the cookie file created by the `login` command. If you did not change its path, you do not need to specify this argument. The `-p/--path` option allows you to specify a different sync folder than the one you're calling `ols` from. The `-i/--olignore` option allows you to specify the path of an `.olignore` file. It uses `fnmatch` internally, so it may have some similarity to `.gitignore` but doesn't work exactly the same. For example, if you wish to exclude a specific folder named `out`, you need to specify it as `out/*`. See [here](https://docs.python.org/3/library/fnmatch.html) for more information.
 
+### Debugging dashboard requests
+
+If querying a project fails, run `ols --debug --verbose`. It saves the exact dashboard response received from Overleaf as `.olsync-debug/project-dashboard.html`, together with non-sensitive response metadata in `.olsync-debug/project-dashboard.json`. Open the HTML file in a browser to see whether Overleaf returned a login, CAPTCHA, proxy, or changed-dashboard page. The debug directory is never uploaded during local-to-remote sync.
+
 Sample Output:
 
 ```

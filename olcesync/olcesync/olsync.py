@@ -78,10 +78,14 @@ except ImportError:
               'verbose',
               is_flag=True,
               help="Enable extended error logging.")
+@click.option('--debug',
+              'debug',
+              is_flag=True,
+              help="Save received dashboard HTML to .olsync-debug for troubleshooting.")
 @click.version_option(package_name='overleaf-sync')
 @click.pass_context
 def main(ctx, local, remote, project_name, cookie_path, sync_path, olignore_path,
-         verbose):
+         verbose, debug):
     if ctx.invoked_subcommand is None:
         for i in range(5):
             if not os.path.isfile(cookie_path):
@@ -96,8 +100,9 @@ def main(ctx, local, remote, project_name, cookie_path, sync_path, olignore_path
             store = pickle.load(f)
 
         server_ip = get_key("server")
-        overleaf_client = OverleafClient(server_ip, store["cookie"],
-                                         store["csrf"])
+        overleaf_client = OverleafClient(
+            server_ip, store["cookie"], store["csrf"],
+            ".olsync-debug" if debug else None)
 
         # Change the current directory to the specified sync path
         os.chdir(sync_path)
@@ -503,7 +508,9 @@ def olignore_keep_list(olignore_path):
         ]
 
     keep_list = [
-        Path(item).as_posix() for item in keep_list if not os.path.isdir(item)
+        Path(item).as_posix() for item in keep_list
+        if not os.path.isdir(item)
+        and not Path(item).as_posix().startswith(".olsync-debug/")
     ]
     return keep_list
 
