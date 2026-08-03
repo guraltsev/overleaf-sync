@@ -11,6 +11,7 @@
 
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests as reqs
@@ -59,10 +60,12 @@ class OverleafClient(object):
                 if all(p.get(k) == v for k, v in more_attrs.items()):
                     yield p
 
-    def __init__(self, cookie=None, csrf=None, debug_dir=None):
+    def __init__(self, cookie=None, csrf=None, debug_dir=None,
+                 cookie_path=None):
         self._cookie = cookie
         self._csrf = csrf
         self._debug_dir = Path(debug_dir) if debug_dir else None
+        self._cookie_path = str(Path(cookie_path).resolve()) if cookie_path else None
         self._session = reqs.Session()
         self._session.headers.update({"User-Agent": "Mozilla/5.0"})
         for name, value in (cookie or {}).items():
@@ -70,6 +73,28 @@ class OverleafClient(object):
                                       value,
                                       domain=".overleaf.com",
                                       path="/")
+
+    def _debug_log(self, event, **details):
+        """Append safe request diagnostics without recording cookie values."""
+        if self._debug_dir is None:
+            return
+
+        self._debug_dir.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event": event,
+            **details,
+        }
+        with (self._debug_dir / "debug.log").open("a", encoding="utf-8") as log:
+            log.write(json.dumps(entry, sort_keys=True) + "\n")
+
+    @staticmethod
+    def _redirects(response):
+        return [{
+            "status_code": item.status_code,
+            "url": item.url,
+            "location": item.headers.get("Location"),
+        } for item in response.history]
 
     def _write_debug_snapshot(self, response):
         """Persist the dashboard response without exposing authentication data."""
@@ -82,10 +107,13 @@ class OverleafClient(object):
         html_path.write_bytes(response.content)
         metadata_path.write_text(
             json.dumps({
-                "url": response.url,
+                "cookie_file": self._cookie_path,
+                "requested_url": PROJECT_URL,
+                "final_url": response.url,
                 "status_code": response.status_code,
                 "content_type": response.headers.get("Content-Type"),
                 "content_length": len(response.content),
+                "redirects": self._redirects(response),
             }, indent=2),
             encoding="utf-8")
         print("Debug dashboard snapshot written to {}".format(html_path))
@@ -97,8 +125,23 @@ class OverleafClient(object):
         received HTML in debug mode before parsing it. This makes redirects,
         CAPTCHA pages, and markup changes directly inspectable.
         """
-        projects_page = self._session.get(PROJECT_URL)
+        self._debug_log("project_dashboard_request",
+                        cookie_file=self._cookie_path,
+                        cookie_names=sorted((self._cookie or {}).keys()),
+                        requested_url=PROJECT_URL)
+        try:
+            projects_page = self._session.get(PROJECT_URL)
+        except reqs.RequestException as exc:
+            self._debug_log("project_dashboard_network_error",
+                            requested_url=PROJECT_URL,
+                            error=str(exc))
+            raise
         self._write_debug_snapshot(projects_page)
+        self._debug_log("project_dashboard_response",
+                        requested_url=PROJECT_URL,
+                        final_url=projects_page.url,
+                        status_code=projects_page.status_code,
+                        redirects=self._redirects(projects_page))
         projects_page.raise_for_status()
 
         page = BeautifulSoup(projects_page.content, 'html.parser')

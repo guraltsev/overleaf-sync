@@ -94,7 +94,8 @@ def main(ctx, local, remote, project_name, cookie_path, sync_path, olignore_path
             store = pickle.load(f)
 
         overleaf_client = OverleafClient(
-            store["cookie"], store["csrf"], ".olsync-debug" if debug else None)
+            store["cookie"], store["csrf"], ".olsync-debug" if debug else None,
+            cookie_path if debug else None)
 
         # Change the current directory to the specified sync path
         os.chdir(sync_path)

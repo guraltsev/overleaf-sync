@@ -102,7 +102,8 @@ def main(ctx, local, remote, project_name, cookie_path, sync_path, olignore_path
         server_ip = get_key("server")
         overleaf_client = OverleafClient(
             server_ip, store["cookie"], store["csrf"],
-            ".olsync-debug" if debug else None)
+            ".olsync-debug" if debug else None,
+            cookie_path if debug else None)
 
         # Change the current directory to the specified sync path
         os.chdir(sync_path)
