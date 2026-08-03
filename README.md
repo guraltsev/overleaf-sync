@@ -123,7 +123,7 @@ The option `--store-path` specifies the path of the cookie file created by the `
 
 ### Debugging dashboard requests
 
-If querying a project fails, run `ols --debug`. It saves the exact dashboard response received from Overleaf as `.olsync-debug/project-dashboard.html`, together with non-sensitive response metadata in `.olsync-debug/project-dashboard.json`. The timestamped `.olsync-debug/debug.log` records the resolved cookie-file path, requested URL, redirect chain, final URL, and HTTP status. `.olsync-debug/debug-output.log` receives a copy of all stdout and stderr, including Python tracebacks. Cookie values are never written. Open the HTML file in a browser to see whether Overleaf returned a login, CAPTCHA, proxy, or changed-dashboard page. The debug directory is never uploaded during local-to-remote sync.
+If querying a project fails, run `ols --debug`. `.olsync-debug/debug.log` is the cleaned, line-oriented copy of all stdout and stderr, including Python tracebacks. It includes readable summaries of the cookie file, request URL, redirect chain, final URL, and HTTP status. Terminal escape sequences and carriage-return progress updates are removed. `.olsync-debug/request-trace.jsonl` contains the same HTTP events in structured form, and `.olsync-debug/project-dashboard.html` plus `.olsync-debug/project-dashboard.json` preserve the received response. Cookie values are never written. Open the HTML file in a browser to see whether Overleaf returned a login, CAPTCHA, proxy, or changed-dashboard page. The debug directory is never uploaded during local-to-remote sync.
 
 Sample Output:
 

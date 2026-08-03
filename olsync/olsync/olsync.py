@@ -14,6 +14,7 @@ import glob
 import io
 import os
 import pickle
+import re
 import sys
 import traceback
 import zipfile
@@ -42,7 +43,7 @@ class _DebugStreamTee:
 
     def write(self, text):
         self._console.write(text)
-        self._log_file.write(text)
+        self._log_file.write(_clean_debug_text(text))
 
     def flush(self):
         self._console.flush()
@@ -55,10 +56,21 @@ class _DebugStreamTee:
         return getattr(self._console, name)
 
 
+_ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
+_OTHER_CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]")
+
+
+def _clean_debug_text(text):
+    """Normalize terminal output for a readable, line-oriented log file."""
+    text = _ANSI_ESCAPE.sub("", text)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return _OTHER_CONTROL_CHARACTERS.sub("", text)
+
+
 def enable_debug_output_capture(debug_dir):
     """Write all process stdout and stderr to a persistent debug log."""
     debug_dir.mkdir(parents=True, exist_ok=True)
-    log_file = (debug_dir / "debug-output.log").open("a", encoding="utf-8")
+    log_file = (debug_dir / "debug.log").open("a", encoding="utf-8")
     log_file.write("\n===== overleaf-sync debug session =====\n")
     log_file.flush()
     sys.stdout = _DebugStreamTee(sys.stdout, log_file)

@@ -10,6 +10,7 @@
 ##################################################
 
 import json
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,8 +90,26 @@ class OverleafClient(object):
             "event": event,
             **details,
         }
-        with (self._debug_dir / "debug.log").open("a", encoding="utf-8") as log:
+        with (self._debug_dir / "request-trace.jsonl").open("a", encoding="utf-8") as log:
             log.write(json.dumps(entry, sort_keys=True) + "\n")
+        if event == "project_dashboard_request":
+            print("[debug] Querying the Overleaf project dashboard")
+            print("[debug] Cookie file: {}".format(details["cookie_file"]))
+            print("[debug] Cookies read: {}".format(
+                ", ".join(details["cookie_names"])))
+            print("[debug] Cookies sent: {}".format(
+                ", ".join(details["sent_cookie_names"])))
+            print("[debug] Request URL: {}".format(details["requested_url"]))
+        elif event == "project_dashboard_response":
+            print("[debug] Final URL: {} (HTTP {})".format(
+                details["final_url"], details["status_code"]))
+            for redirect in details["redirects"]:
+                print("[debug] Redirect: {} --HTTP {}--> {}".format(
+                    redirect["url"], redirect["status_code"],
+                    redirect["location"] or "(no Location header)"))
+        elif event == "project_dashboard_network_error":
+            print("[debug] Dashboard request failed: {}".format(
+                details["error"]), file=sys.stderr)
 
     @staticmethod
     def _redirects(response):
@@ -247,9 +266,17 @@ class OverleafClient(object):
             nonlocal project_infos
             project_infos = project_infos_dict.get("project", {})
 
-        # Convert cookie from CookieJar to string
-        cookie = "GCLB={}; overleaf_session2={}".format(
-            self._cookie["GCLB"], self._cookie["overleaf_session2"])
+        # The session cookie authenticates the Socket.IO connection.  GCLB is
+        # only an optional, short-lived load-balancer affinity cookie: current
+        # Overleaf logins commonly do not provide it.  Reuse any cookies the
+        # dashboard request has received, rather than requiring GCLB to have
+        # been persisted at login time.
+        if not self._session.cookies.get("overleaf_session2"):
+            raise RuntimeError(
+                "Overleaf session cookie is missing. Please log in again.")
+        cookie = "; ".join(
+            "{}={}".format(stored_cookie.name, stored_cookie.value)
+            for stored_cookie in self._session.cookies)
 
         # Connect to Overleaf Socket.IO, send a time parameter and the cookies
         socket_io = SocketIO(BASE_URL,
