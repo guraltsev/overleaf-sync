@@ -63,6 +63,13 @@ class OverleafClient(object):
         self._cookie = cookie
         self._csrf = csrf
         self._debug_dir = Path(debug_dir) if debug_dir else None
+        self._session = reqs.Session()
+        self._session.headers.update({"User-Agent": "Mozilla/5.0"})
+        for name, value in (cookie or {}).items():
+            self._session.cookies.set(name,
+                                      value,
+                                      domain=".overleaf.com",
+                                      path="/")
 
     def _write_debug_snapshot(self, response):
         """Persist the dashboard response without exposing authentication data."""
@@ -90,7 +97,7 @@ class OverleafClient(object):
         received HTML in debug mode before parsing it. This makes redirects,
         CAPTCHA pages, and markup changes directly inspectable.
         """
-        projects_page = reqs.get(PROJECT_URL, cookies=self._cookie)
+        projects_page = self._session.get(PROJECT_URL)
         self._write_debug_snapshot(projects_page)
         projects_page.raise_for_status()
 
@@ -144,9 +151,7 @@ class OverleafClient(object):
         Params: project_id, the id of the project
         Returns: bytes string (zip file)
         """
-        r = reqs.get(DOWNLOAD_URL.format(project_id),
-                     stream=True,
-                     cookies=self._cookie)
+        r = self._session.get(DOWNLOAD_URL.format(project_id), stream=True)
         return r.content
 
     def create_folder(self, project_id, parent_folder_id, folder_name):
@@ -163,10 +168,9 @@ class OverleafClient(object):
 
         params = {"parent_folder_id": parent_folder_id, "name": folder_name}
         headers = {"X-Csrf-Token": self._csrf}
-        r = reqs.post(FOLDER_URL.format(project_id),
-                      cookies=self._cookie,
-                      headers=headers,
-                      json=params)
+        r = self._session.post(FOLDER_URL.format(project_id),
+                               headers=headers,
+                               json=params)
 
         if r.ok:
             return json.loads(r.content)
@@ -276,12 +280,11 @@ class OverleafClient(object):
         }
 
         # Upload the file to the predefined folder
-        r = reqs.post(UPLOAD_URL.format(project_id),
-                      cookies=self._cookie,
-                      headers=headers,
-                      params=params,
-                      data=data,
-                      files=files)
+        r = self._session.post(UPLOAD_URL.format(project_id),
+                               headers=headers,
+                               params=params,
+                               data=data,
+                               files=files)
 
         return r.status_code == str(200) and json.loads(r.content)["success"]
 
@@ -327,9 +330,8 @@ class OverleafClient(object):
 
         headers = {"X-Csrf-Token": self._csrf}
 
-        r = reqs.delete(DELETE_URL.format(project_id, file_type, file_id),
-                        cookies=self._cookie,
-                        headers=headers)
+        r = self._session.delete(DELETE_URL.format(project_id, file_type, file_id),
+                                 headers=headers)
 
         return r.status_code == '204'
 
@@ -352,10 +354,9 @@ class OverleafClient(object):
             "stopOnFirstError": False
         }
 
-        r = reqs.post(COMPILE_URL.format(project_id),
-                      cookies=self._cookie,
-                      headers=headers,
-                      json=body)
+        r = self._session.post(COMPILE_URL.format(project_id),
+                               headers=headers,
+                               json=body)
 
         if not r.ok:
             raise reqs.HTTPError()
@@ -368,9 +369,8 @@ class OverleafClient(object):
         pdf_file = next(v for v in compile_result['outputFiles']
                         if v['type'] == 'pdf')
 
-        download_req = reqs.get(BASE_URL + pdf_file['url'],
-                                cookies=self._cookie,
-                                headers=headers)
+        download_req = self._session.get(BASE_URL + pdf_file['url'],
+                                         headers=headers)
 
         if download_req.ok:
             return pdf_file['path'], download_req.content

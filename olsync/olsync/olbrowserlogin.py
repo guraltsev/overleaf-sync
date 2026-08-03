@@ -10,7 +10,7 @@
 ##################################################
 
 import requests as reqs
-from PySide6.QtCore import QCoreApplication, QUrl
+from PySide6.QtCore import QCoreApplication, QTimer, QUrl
 from PySide6.QtWebEngineCore import (QWebEnginePage, QWebEngineProfile,
                                      QWebEngineSettings)
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -21,8 +21,6 @@ LOGIN_URL = "https://www.overleaf.com/login"
 PROJECT_URL = "https://www.overleaf.com/project"    # The dashboard URL
 SOCKET_URL = "https://www.overleaf.com/socket.io/socket.io.js"
 
-# JS snippet to get the first link
-JAVASCRIPT_EXTRACT_PROJECT_URL = "document.getElementsByClassName('dash-cell-name')[1].firstChild.href"
 # JS snippet to extract the csrfToken
 JAVASCRIPT_CSRF_EXTRACTOR = "document.getElementsByName('ol-csrfToken')[0].content"
 # Name of the cookies we want to extract
@@ -43,6 +41,7 @@ class OlBrowserLoginWindow(QMainWindow):
         self._cookies = {}
         self._csrf = ""
         self._login_success = False
+        self._finishing_login = False
 
         self.profile = QWebEngineProfile(self.webview)
         self.cookie_store = self.profile.cookieStore()
@@ -62,21 +61,26 @@ class OlBrowserLoginWindow(QMainWindow):
         self.resize(600, 700)
 
     def handle_load_finished(self):
+        if (self.webview.url().toString() == PROJECT_URL
+                and not self._finishing_login):
+            self._finishing_login = True
+            # The old flow navigated through a dashboard project link that is
+            # no longer present. The dashboard itself contains the CSRF token.
+            self.webview.page().runJavaScript(JAVASCRIPT_CSRF_EXTRACTOR, 0,
+                                              self._finish_login)
 
-        def callback(result):
-       
-            def callback(result):
-                self._csrf = result
-                self._login_success = True
-                QCoreApplication.quit()
+    def _finish_login(self, csrf):
+        self._csrf = csrf or ""
+        # Ensure cookieAdded has delivered the authenticated session before
+        # closing the temporary browser profile.
+        self.cookie_store.loadAllCookies()
 
-            self.webview.load(QUrl.fromUserInput(result))
-            self.webview.loadFinished.connect(lambda x: self.webview.page(
-            ).runJavaScript(JAVASCRIPT_CSRF_EXTRACTOR, 0, callback))
+        def quit_after_cookie_delivery():
+            self._login_success = bool(
+                self._csrf and self._cookies.get("overleaf_session2"))
+            QCoreApplication.quit()
 
-        if self.webview.url().toString() == PROJECT_URL:
-            self.webview.page().runJavaScript(JAVASCRIPT_EXTRACT_PROJECT_URL, 0,
-                                              callback)
+        QTimer.singleShot(500, quit_after_cookie_delivery)
 
     def handle_cookie_added(self, cookie):
         cookie_name = cookie.name().data().decode('utf-8')
